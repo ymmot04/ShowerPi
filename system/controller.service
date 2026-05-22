@@ -1,0 +1,16 @@
+[Unit]
+Description=Shower Pi Controller backend
+After=network-online.target bluetooth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace 'showerpi' with your actual username if different
+User=showerpi
+WorkingDirectory=/home/showerpi/controller
+ExecStart=/home/showerpi/controller/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

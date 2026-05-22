@@ -1,0 +1,39 @@
+#!/bin/sh
+# ~/.config/openbox/autostart
+# Runs when Openbox starts (after startx, from .bash_profile).
+
+# Rotate display to portrait (90° counter-clockwise).
+xrandr --output HDMI-1 --rotate left
+
+# Reset the Coordinate Transformation Matrix to identity. xrandr --rotate
+# sets a CTM that would override our libinput Calibration Matrix; clear it
+# so the calibration we set in 99-calibration.conf actually applies.
+DISPLAY=:0 xinput set-prop "ADS7846 Touchscreen" \
+  "Coordinate Transformation Matrix" 1 0 0 0 1 0 0 0 1 2>/dev/null
+
+# Disable screen blanking and DPMS — kiosks shouldn't sleep.
+xset s off
+xset s noblank
+xset -dpms
+
+# Hide the mouse cursor when idle.
+unclutter -idle 0.1 -root &
+
+# Wait for the backend before launching Chromium.
+while ! curl -s http://localhost:8000/ > /dev/null; do
+  sleep 0.5
+done
+
+# Chromium in kiosk mode. The disk-cache-dir points to /tmp (a tmpfs)
+# so cached UI never survives a reboot.
+chromium-browser \
+  --kiosk \
+  --noerrdialogs \
+  --disable-infobars \
+  --disable-session-crashed-bubble \
+  --disable-features=TranslateUI \
+  --check-for-update-interval=31536000 \
+  --no-first-run \
+  --start-fullscreen \
+  --disk-cache-dir=/tmp/chromium-cache \
+  --app=http://localhost:8000 &

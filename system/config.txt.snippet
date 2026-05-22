@@ -1,0 +1,20 @@
+# Reference snippet for /boot/firmware/config.txt
+# Append these lines at the bottom of the existing file. Don't replace the
+# whole file — Pi OS ships with required lines (camera_auto_detect,
+# vc4-kms-v3d, etc.) that must stay.
+
+[all]
+
+# Elecrow RR050 5" 800x480 HDMI display
+hdmi_force_hotplug=1
+hdmi_group=2
+hdmi_mode=87
+hdmi_cvt=800 480 60 6 0 0 0
+hdmi_drive=1
+
+# Enable I2C (for the PCF8591 thermistor ADC)
+dtparam=i2c_arm=on
+
+# Enable SPI and the XPT2046/ADS7846 resistive touch controller
+dtparam=spi=on
+dtoverlay=ads7846,penirq=25,penirq_pull=2,speed=10000,xohms=150

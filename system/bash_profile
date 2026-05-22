@@ -1,0 +1,5 @@
+# ~/.bash_profile
+# Auto-start X on tty1 when the autologged-in user logs in.
+if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+  startx -- -nocursor
+fi
