@@ -1,0 +1,6 @@
+# /etc/sudoers.d/controller-shutdown
+# Allow the controller service user to run /sbin/shutdown without a password.
+# Install with: sudo visudo -f /etc/sudoers.d/controller-shutdown
+# (or copy this file and verify with: sudo visudo -cf /etc/sudoers.d/controller-shutdown)
+
+showerpi ALL=(root) NOPASSWD: /sbin/shutdown

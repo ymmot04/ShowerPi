@@ -1,0 +1,7 @@
+[Unit]
+Description=Try to reconnect paired Bluetooth devices
+After=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bt-reconnect.sh

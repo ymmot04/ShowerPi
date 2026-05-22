@@ -1,0 +1,12 @@
+# Reference for /boot/firmware/cmdline.txt
+#
+# /boot/firmware/cmdline.txt must be a single line. Do NOT copy this file
+# directly; append the additions below to the existing single line in your
+# system's cmdline.txt (which has device-specific PARTUUIDs etc.).
+#
+# Additions to append (with a leading space):
+#   fbcon=rotate:3 video=HDMI-A-1:800x480M@60,rotate=90
+#
+# Breakdown:
+#   fbcon=rotate:3                       - rotate framebuffer console 90° CCW
+#   video=HDMI-A-1:800x480M@60,rotate=90 - tell DRM/KMS to rotate HDMI-A-1

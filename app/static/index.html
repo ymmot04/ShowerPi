@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=480, initial-scale=1, user-scalable=no">
+  <title>Controller</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+    html, body {
+      margin: 0; padding: 0;
+      width: 480px; height: 800px;
+      background: #0e0e10; color: #f4f4f5;
+      font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    body {
+      display: flex; flex-direction: column;
+      padding: 12px; gap: 12px;
+      position: relative;
+    }
+
+    .top-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      height: 200px; flex-shrink: 0;
+    }
+    .card {
+      border-radius: 20px;
+      background: #1f1f23;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      border: 3px solid transparent;
+      transition: background 120ms, transform 80ms;
+    }
+    .card:active { transform: scale(0.97); }
+    .card .icon  { font-size: 40px; line-height: 1; margin-bottom: 2px; }
+    .card .label { font-size: 18px; opacity: 0.75; margin-top: 2px; }
+    .card .value { font-size: 40px; font-weight: 700; line-height: 1; }
+    .card.confirm { background: #b91c1c; border-color: #ef4444; color: #fff; }
+    .card.confirm .label { opacity: 1; }
+
+    .media {
+      flex: 1; min-height: 0;
+      background: #18181b;
+      border-radius: 20px;
+      padding: 14px;
+      display: flex; flex-direction: column;
+      gap: 10px;
+    }
+    .art {
+      width: 100%;
+      flex: 1; min-height: 0;
+      background: #27272a; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 60px; color: #52525b;
+      overflow: hidden;
+    }
+    .art img {
+      max-width: 100%; max-height: 100%;
+      width: auto; height: auto;
+      object-fit: contain;
+      border-radius: 10px;
+    }
+    .meta { text-align: center; flex-shrink: 0; }
+    .title  { font-size: 20px; font-weight: 600; margin: 0 0 2px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .artist { font-size: 16px; opacity: 0.7; margin: 0;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .album  { font-size: 13px; opacity: 0.5; margin: 1px 0 0;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .controls {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px; flex-shrink: 0;
+    }
+    .ctl-btn {
+      flex: 1; height: 78px;
+      background: #27272a; border: none; border-radius: 16px;
+      color: #f4f4f5; font-size: 26px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 120ms, transform 80ms;
+    }
+    .ctl-btn:active { background: #3f3f46; transform: scale(0.96); }
+    .ctl-btn.playpause { font-size: 30px; }
+
+    .disconnect-banner {
+      position: absolute; top: 0; left: 0; right: 0;
+      background: #b91c1c; color: #fff;
+      font-size: 13px; text-align: center;
+      padding: 3px 0;
+      transform: translateY(-100%);
+      transition: transform 200ms;
+      z-index: 10;
+    }
+    .disconnect-banner.show { transform: translateY(0); }
+
+    .shutdown-overlay {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      color: #fff;
+      font-size: 24px;
+      z-index: 20;
+    }
+    .shutdown-overlay.show { display: flex; }
+  </style>
+</head>
+<body>
+
+  <div class="disconnect-banner" id="banner">Disconnected — reconnecting…</div>
+  <div class="shutdown-overlay" id="shutdown-overlay">
+    <div style="font-size:48px;">⏻</div>
+    <div>Shutting down…</div>
+    <div style="opacity:0.7;font-size:16px;">Safe to switch off in 10 seconds</div>
+  </div>
+
+  <div class="top-row">
+    <div class="card" id="shutdown" onclick="shutdownTap()">
+      <div class="icon" id="shutdown-icon">⏻</div>
+      <div class="value" id="shutdown-value">--:-- --</div>
+      <div class="label" id="shutdown-label">Shut Down</div>
+    </div>
+    <div class="card" id="temp" onclick="toggleTempMode()">
+      <div class="icon" id="temp-icon">🌤️</div>
+      <div class="value" id="temp-value">--°</div>
+      <div class="label" id="temp-label">Outside</div>
+    </div>
+  </div>
+
+  <div class="media">
+    <div class="art" id="art">
+      <span id="art-fallback">🎵</span>
+      <img id="art-img" style="display:none;">
+    </div>
+    <div class="meta">
+      <p class="title"  id="title">Nothing playing</p>
+      <p class="artist" id="artist"></p>
+      <p class="album"  id="album"></p>
+    </div>
+    <div class="controls">
+      <button class="ctl-btn" onclick="media('previous')">⏮</button>
+      <button class="ctl-btn playpause" id="playpause" onclick="playpause()">▶</button>
+      <button class="ctl-btn" onclick="media('next')">⏭</button>
+    </div>
+    <div class="controls">
+      <button class="ctl-btn" onclick="vol('down')">−</button>
+      <button class="ctl-btn" onclick="vol('up')">+</button>
+    </div>
+  </div>
+
+<script>
+let ws;
+let lastState = null;
+let tempMode  = 'outside';
+let shutdownArmed   = false;
+let shutdownTimeout = null;
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen   = () => showBanner(false);
+  ws.onclose  = () => { showBanner(true); setTimeout(connect, 1500); };
+  ws.onerror  = () => ws.close();
+  ws.onmessage = e => { lastState = JSON.parse(e.data); render(lastState); };
+}
+
+function showBanner(show) {
+  document.getElementById('banner').classList.toggle('show', show);
+}
+
+function renderTemp() {
+  if (!lastState || !lastState.temperature) return;
+  const t = lastState.temperature;
+  const valueEl = document.getElementById('temp-value');
+  const iconEl  = document.getElementById('temp-icon');
+  const labelEl = document.getElementById('temp-label');
+
+  if (tempMode === 'shower') {
+    iconEl.textContent = '🚿';
+    labelEl.textContent = 'Shower';
+    valueEl.textContent = (t.shower_f === null || t.shower_f === undefined)
+      ? '--°' : Math.round(t.shower_f) + '°';
+  } else {
+    iconEl.textContent = '🌤️';
+    labelEl.textContent = 'Outside';
+    const now  = (t.outside_f === null || t.outside_f === undefined)
+      ? '--' : Math.round(t.outside_f);
+    const high = (t.outside_high_f === null || t.outside_high_f === undefined)
+      ? '--' : Math.round(t.outside_high_f);
+    valueEl.textContent = `${now}→${high}°`;
+  }
+}
+
+function toggleTempMode() {
+  tempMode = (tempMode === 'shower') ? 'outside' : 'shower';
+  renderTemp();
+}
+
+function disarmShutdown() {
+  shutdownArmed = false;
+  document.getElementById('shutdown').classList.remove('confirm');
+  document.getElementById('shutdown-label').textContent = 'Shut Down';
+}
+
+async function shutdownTap() {
+  if (!shutdownArmed) {
+    shutdownArmed = true;
+    document.getElementById('shutdown').classList.add('confirm');
+    document.getElementById('shutdown-label').textContent = 'Tap again';
+    if (shutdownTimeout) clearTimeout(shutdownTimeout);
+    shutdownTimeout = setTimeout(disarmShutdown, 3000);
+    return;
+  }
+  if (shutdownTimeout) clearTimeout(shutdownTimeout);
+  document.getElementById('shutdown-overlay').classList.add('show');
+  await fetch('/system/shutdown', { method: 'POST' });
+}
+
+function updateClock() {
+  const now = new Date();
+  let hours = now.getHours();
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  document.getElementById('shutdown-value').textContent = `${hours}:${minutes} ${ampm}`;
+}
+
+function render(state) {
+  const m = state.media;
+  document.getElementById('title').textContent  = m.title  || (m.connected ? '—' : 'Nothing playing');
+  document.getElementById('artist').textContent = m.artist || '';
+  document.getElementById('album').textContent  = m.album  || '';
+  document.getElementById('playpause').textContent = m.playing ? '❚❚' : '▶';
+
+  const img = document.getElementById('art-img');
+  const fb  = document.getElementById('art-fallback');
+  if (m.art_url) {
+    if (img.src !== m.art_url) img.src = m.art_url;
+    img.style.display = 'block';
+    fb.style.display  = 'none';
+  } else {
+    img.style.display = 'none';
+    fb.style.display  = 'block';
+    img.src = '';
+  }
+
+  renderTemp();
+}
+
+async function playpause()  { await fetch('/media/playpause', { method: 'POST' }); }
+async function media(action){ await fetch(`/media/${action}`, { method: 'POST' }); }
+async function vol(dir)     { await fetch(`/media/volume/${dir}`, { method: 'POST' }); }
+
+setInterval(updateClock, 1000);
+updateClock();
+connect();
+</script>
+</body>
+</html>

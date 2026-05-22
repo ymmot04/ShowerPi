@@ -1,0 +1,3 @@
+#!/bin/sh
+# ~/.xinitrc
+exec openbox-session
