@@ -1,25 +1,16 @@
 #!/bin/bash
-# Reconnect to paired, trusted Bluetooth devices that aren't currently
-# connected. Runs every 30 seconds via bt-reconnect.timer.
-
-# Phone (A2DP source - sends audio to the Pi). Find your phone's MAC with:
-#   bluetoothctl devices Paired
-PHONE_MAC="XX:XX:XX:XX:XX:XX"
-
-# Amplifier / speaker (A2DP sink - Pi sends audio to it)
+# Keep the Pi connected to the amplifier (A2DP sink - the Pi sends audio to it).
+# The phone is NOT reconnected here: connect to the Pi manually from the phone's
+# Bluetooth settings. Runs every 30 seconds via bt-reconnect.timer.
+#
+# Find the amp's MAC with:  bluetoothctl devices Paired
 AMP_MAC="XX:XX:XX:XX:XX:XX"
 
-reconnect_if_needed() {
-    local mac="$1"
-    if [ -z "$mac" ] || [ "$mac" = "XX:XX:XX:XX:XX:XX" ]; then
-        return
-    fi
-    local connected
-    connected=$(bluetoothctl info "$mac" 2>/dev/null | grep "Connected: yes")
-    if [ -z "$connected" ]; then
-        bluetoothctl connect "$mac" >/dev/null 2>&1
-    fi
-}
+if [ -z "$AMP_MAC" ] || [ "$AMP_MAC" = "XX:XX:XX:XX:XX:XX" ]; then
+    exit 0
+fi
 
-reconnect_if_needed "$PHONE_MAC"
-reconnect_if_needed "$AMP_MAC"
+connected=$(bluetoothctl info "$AMP_MAC" 2>/dev/null | grep "Connected: yes")
+if [ -z "$connected" ]; then
+    bluetoothctl connect "$AMP_MAC" >/dev/null 2>&1
+fi

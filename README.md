@@ -1,20 +1,22 @@
 # Shower Pi Controller
 
-A Raspberry Pi controller for a shower entertainment system. The 5"
-touch UI shows the time, shower air temperature, outside temperature
+A wall-mounted Raspberry Pi controller for a bathroom with a shower. The 5"
+touch UI shows the time, shower water temperature, outside temperature
 (current and daily high), and Bluetooth music controls with album art. The
 Pi acts as a Bluetooth speaker for a phone and forwards the audio to a
-Bluetooth amplifier.
+Bluetooth amplifier in the room.
 
 ## Hardware
 
 - **Raspberry Pi 3B+** running Raspberry Pi OS Lite (64-bit) Bookworm
 - **Elecrow RR050** 5" resistive HDMI touchscreen, 800×480, mounted portrait
-- **PCF8591T** 8-bit I2C ADC
+- **PCF8591T** 8-bit I2C ADC (bare Freenove breakout)
 - **NTC thermistor** (~5kΩ at 25°C) in a voltage divider with a 10kΩ fixed
   resistor, feeding AIN0 of the PCF8591
-- **External Bluetooth amplifier** I used a ZK-1002T powering a pair of HERTZ
-  Dieci Series DCX-1653 6.5" Two-Way Coaxial Speakers
+- **External Bluetooth amplifier** (the Pi pairs with it as an A2DP sink)
+
+The light in the room is switched at the wall (alongside the rest of the
+bathroom power), not by the Pi.
 
 ## Software architecture
 
@@ -46,9 +48,9 @@ Three layers:
   `/etc/X11/xorg.conf.d/99-calibration.conf`. xrandr's rotation sets a
   Coordinate Transformation Matrix which is reset to identity in the
   Openbox autostart so the calibration matrix actually applies.
-- **If not using Ethernet, then 5GHz Wi-Fi** — critical for stable Bluetooth
-  audio. The Pi 3B+ shares a single radio between Wi-Fi and Bluetooth; running
-  Wi-Fi on 2.4GHz causes audio stutters with the double-A2DP setup.
+- **5GHz Wi-Fi** — critical for stable Bluetooth audio. The Pi 3B+ shares
+  a single radio between Wi-Fi and Bluetooth; running Wi-Fi on 2.4GHz
+  causes audio stutters with the double-A2DP setup.
 
 ## UI
 
@@ -76,11 +78,12 @@ shower-pi-controller/
 ├── install.sh                         One-shot installer for a fresh Pi
 ├── app/
 │   ├── app.py                         FastAPI backend
+│   ├── pairing.py                     BlueZ pairing agent + pairing window
 │   ├── requirements.txt               Python deps
 │   └── static/
 │       └── index.html                 Frontend (480×800 portrait)
 ├── scripts/
-│   ├── bt-reconnect.sh                Periodic BT reconnect → /usr/local/bin/
+│   ├── bt-reconnect.sh                Keeps the amp connected → /usr/local/bin/
 │   └── temp_calibrate.py              Thermistor calibration helper
 └── system/
     ├── controller.service             systemd unit for backend
@@ -175,31 +178,53 @@ remain free — that's where the PCF8591 connects.
 - `POST /media/previous`
 - `POST /media/volume/{up|down}` — adjusts AVRCP volume in 8-unit steps
   (~one iPhone notch per tap)
+- `POST /bluetooth/pairing/start` — make the Pi discoverable for 120 s
+- `POST /bluetooth/pairing/stop` — end the pairing window early
+- `POST /bluetooth/respond/{accept|reject}` — answer the on-screen pairing
+  prompt
 - `GET /` — frontend HTML
 - `WS /ws` — live state broadcast (media metadata, art URL, shower temp,
-  outside temp, outside high temp)
+  outside temp, outside high temp, pairing prompt / window state)
+
+> **Security note:** the API has no authentication and listens on all
+> interfaces (port 8000). Anyone on your LAN can shut the Pi down or control
+> playback. Run it on a trusted network, or bind to `127.0.0.1` in
+> `controller.service` if only the local kiosk needs it.
 
 ## Bluetooth pairing
 
-### Phone (A2DP source)
+### Phone (A2DP source) — on-screen pairing
+
+The Pi runs its own BlueZ pairing agent (`app/pairing.py`), so new devices
+are approved on the touchscreen instead of through `bluetoothctl`.
+
+1. When no phone is connected, a **Pair new device** button appears under
+   the track info. Tap it. The Pi becomes discoverable for 120 seconds
+   (the button shows a countdown; tap again to cancel).
+2. On the phone, open Bluetooth settings and tap the Pi (its hostname).
+3. A full-screen prompt appears on the Pi showing the device name and a
+   6-digit code. If it matches the phone, tap **Accept**. Unanswered
+   prompts auto-reject after 30 seconds.
+4. The device is marked trusted automatically and the pairing window
+   closes shortly after.
+
+After the first pairing, connect **manually from the phone** (Bluetooth
+settings → tap the Pi). Already-trusted devices connect without a prompt;
+an untrusted device asking to use audio services gets the on-screen prompt.
+The Pi does not auto-reconnect to the phone. The Pair button is hidden
+while a phone is connected.
+
+Check a device afterwards with:
 
 ```sh
-bluetoothctl
-[bluetooth]# power on
-[bluetooth]# agent on
-[bluetooth]# default-agent
-[bluetooth]# discoverable yes
-[bluetooth]# pairable yes
+bluetoothctl info <phone-mac> | grep -E "Paired|Trusted"
 ```
 
-On your phone, open Bluetooth settings, scan, tap the Pi (hostname),
-confirm. Back in bluetoothctl:
+Remove an old phone with `bluetoothctl remove <old-mac>`.
 
-```
-[bluetooth]# devices
-[bluetooth]# trust <phone-mac>
-[bluetooth]# exit
-```
+> Don't leave an interactive `bluetoothctl` session open with `agent on`:
+> it can steal the default agent and the on-screen prompt will stop
+> appearing.
 
 ### Amplifier (A2DP sink)
 
@@ -228,11 +253,11 @@ Set it as the default sink (note the ID from `wpctl status`):
 wpctl set-default <amp-sink-id>
 ```
 
-### Auto-reconnect
+### Amp auto-reconnect
 
-Edit `/usr/local/bin/bt-reconnect.sh` and set `PHONE_MAC` and `AMP_MAC`
-to the MACs from above. The timer runs every 30 seconds and reconnects
-either device if it's offline.
+Edit `/usr/local/bin/bt-reconnect.sh` and set `AMP_MAC` to the amp's MAC.
+The timer runs every 30 seconds and reconnects the amp if it's offline.
+The phone is intentionally not included.
 
 ## Temperature calibration
 
@@ -279,7 +304,8 @@ All features built and working:
 
 - Display + rotation + touch + kiosk autostart
 - FastAPI backend as a systemd service with WebSocket live state
-- Bluetooth A2DP sink (phone → Pi) with auto-reconnect
+- Bluetooth A2DP sink (phone → Pi), connected manually from the phone,
+  with on-screen pairing approval
 - Bluetooth A2DP source (Pi → amp) with auto-reconnect
 - Live track metadata + album art via BlueZ MediaPlayer1 + iTunes
 - Transport controls (play/pause/next/previous)
@@ -289,6 +315,25 @@ All features built and working:
 - Tappable temperature card toggles between Shower and Outside
 - Clock with shutdown affordance in the top-left card
 - Graceful shutdown via UI with two-tap confirmation
+
+## Build journey (high-level)
+
+1. Base system, display rotation, kiosk autostart
+2. Touch setup — originally blocked by a hardware fault on the Waveshare
+   panel, later swapped for the Elecrow RR050 which worked
+3. Backend skeleton (FastAPI + WebSocket)
+4. Frontend shell with portrait CSS
+5. Backend as a systemd service
+6. Bluetooth A2DP sink (BlueZ + PipeWire + WirePlumber)
+7. Media metadata pipeline, album art lookup, transport + volume control
+8. PCF8591 + NTC thermistor for shower temperature
+9. wttr.in integration for outside temperature
+10. Tappable Shower/Outside toggle in the UI
+11. Bluetooth A2DP source for routing audio to an amplifier
+12. Wi-Fi to 5GHz to eliminate BT/Wi-Fi radio contention
+13. Graceful-shutdown button replacing an earlier light-control button
+14. Clock added to the shutdown card, outside set as default temp mode,
+    outside temp combined with daily high in a `current→high°` format
 
 ## Gotchas and troubleshooting
 
@@ -336,6 +381,21 @@ All features built and working:
   class persistently, use `hciconfig hci0 class 0x200414` from a systemd
   service that runs after `bluetooth.service` (`bt-class.service` in
   this repo).
+- **Pi-initiated reconnect to phones is unreliable (especially iOS).**
+  That's why only the amp is auto-reconnected; connect the phone from the
+  phone.
+- **Pairing prompt never appears.** Check
+  `journalctl -u controller -n 50` for `Pairing agent registered`. BlueZ
+  forgets agents when `bluetooth.service` restarts, so run
+  `sudo systemctl restart controller` afterwards. Also make sure no
+  `bluetoothctl` session with `agent on` is open.
+- **Pi isn't discoverable.** Discoverability is only on during the pairing
+  window (tap **Pair new device**). The window sets
+  `DiscoverableTimeout`, which BlueZ persists, so an old
+  `DiscoverableTimeout = 0` (always discoverable) in `main.conf` is
+  overridden after the first use.
+- **Pair button missing.** It's hidden while a phone is connected;
+  disconnect the phone first.
 - **MediaTransport1 only exists when audio is actively streaming.** The
   controller looks up the transport at attach time but also on every
   volume call if it doesn't have one cached, so AVRCP volume works even
@@ -353,6 +413,13 @@ All features built and working:
   Wi-Fi to 5GHz — single biggest improvement for audio stability.
   Force the band per-network:
   `sudo nmcli connection modify "MyNet" 802-11-wireless.band a`.
+- **PipeWire buffer size matters for BT.** The repo defaults to 2048
+  samples (~42ms latency). If audio still stutters after the 5GHz fix,
+  increase to 4096 in `/etc/pipewire/pipewire.conf.d/10-buffers.conf`.
+- **Lossless audio doesn't help.** iPhones re-encode to AAC before
+  transmission over Bluetooth regardless of source quality, so Apple
+  Music's lossless mode has no audible effect through the BT chain.
+  Turning it off saves cellular data and battery.
 
 ### Kiosk / Chromium
 
@@ -360,6 +427,9 @@ All features built and working:
   install has no emoji font. Additionally, the ⏻ (power symbol, U+23FB)
   used in the Shut Down card is not in the emoji font — install
   `fonts-noto-core` for it.
+- **`--incognito` + `--app=URL` doesn't work** — Chromium silently
+  refuses to launch as an app window in incognito mode, resulting in a
+  black screen.
 - **Don't wipe `~/.config/chromium` on every boot to clear cache.** It
   breaks Chromium's first-run state and can produce blank screens.
   Instead, redirect just the cache to a tmpfs:
@@ -367,6 +437,8 @@ All features built and working:
 - **When the kiosk shows a blank/black screen, check a laptop browser
   too.** If the laptop also shows blank, the problem is in the served
   HTML or backend, not Chromium or display config.
+- **Verify large pastes survived.** Paste-into-nano on slow SSH can
+  truncate. Always check with `wc -l` and `tail -3` after a big paste.
 
 ### Network / weather
 

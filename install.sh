@@ -41,6 +41,7 @@ echo
 echo "==> Installing application to $HOME_DIR/controller..."
 mkdir -p "$HOME_DIR/controller/static"
 cp "$REPO_DIR/app/app.py"               "$HOME_DIR/controller/app.py"
+cp "$REPO_DIR/app/pairing.py"           "$HOME_DIR/controller/pairing.py"
 cp "$REPO_DIR/app/static/index.html"    "$HOME_DIR/controller/static/index.html"
 cp "$REPO_DIR/app/requirements.txt"     "$HOME_DIR/controller/requirements.txt"
 
@@ -70,7 +71,7 @@ sudo chmod 0440 /etc/sudoers.d/controller-shutdown
 # BT reconnect script
 sudo cp "$REPO_DIR/scripts/bt-reconnect.sh" /usr/local/bin/bt-reconnect.sh
 sudo chmod +x /usr/local/bin/bt-reconnect.sh
-echo "  NOTE: edit /usr/local/bin/bt-reconnect.sh to set PHONE_MAC and AMP_MAC."
+echo "  NOTE: edit /usr/local/bin/bt-reconnect.sh to set AMP_MAC."
 
 sudo cp "$REPO_DIR/system/bt-reconnect.service" /etc/systemd/system/
 sudo cp "$REPO_DIR/system/bt-reconnect.timer"   /etc/systemd/system/
@@ -132,9 +133,10 @@ Manual steps that remain:
   4. Connect to a 5GHz Wi-Fi network if your Pi 3B+ supports it. Sharing
      2.4GHz between Wi-Fi and double-A2DP Bluetooth causes audio stutters.
 
-  5. Pair your phone and amplifier with the Pi via bluetoothctl
-     (see README for the procedure), then edit PHONE_MAC and AMP_MAC in
-     /usr/local/bin/bt-reconnect.sh.
+  5. Pair the amplifier with the Pi via bluetoothctl (see README), then set
+     AMP_MAC in /usr/local/bin/bt-reconnect.sh. Your phone needs no setup
+     on the Pi: tap "Pair new device" on the touchscreen, pair from the
+     phone, and approve the prompt on the Pi.
 
   6. Wire the PCF8591 + thermistor per the README. Recalibrate BETA and R0
      in ~/controller/app.py for your specific thermistor (the default

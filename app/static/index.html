@@ -104,6 +104,36 @@
       z-index: 20;
     }
     .shutdown-overlay.show { display: flex; }
+
+    .pair-btn {
+      display: none; flex-shrink: 0;
+      height: 48px; border: none; border-radius: 14px;
+      background: #27272a; color: #f4f4f5; font-size: 18px;
+    }
+    .pair-btn:active { background: #3f3f46; }
+    .pair-btn.active { background: #1d4ed8; }
+
+    .bt-prompt {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      gap: 14px; padding: 24px; text-align: center;
+      z-index: 30;
+    }
+    .bt-prompt.show { display: flex; }
+    .bt-prompt .title-sm { font-size: 22px; opacity: 0.8; }
+    .bt-prompt .device   { font-size: 30px; font-weight: 700; }
+    .bt-prompt .passkey  { font-size: 56px; font-weight: 700; letter-spacing: 6px; }
+    .bt-prompt .hint     { font-size: 15px; opacity: 0.6; }
+    .bt-prompt .row      { display: flex; gap: 16px; width: 100%; margin-top: 10px; }
+    .bt-prompt .row button {
+      flex: 1; height: 90px; border: none; border-radius: 18px;
+      font-size: 26px; font-weight: 600; color: #fff;
+    }
+    .bt-prompt .accept { background: #15803d; }
+    .bt-prompt .reject { background: #3f3f46; }
   </style>
 </head>
 <body>
@@ -113,6 +143,17 @@
     <div style="font-size:48px;">⏻</div>
     <div>Shutting down…</div>
     <div style="opacity:0.7;font-size:16px;">Safe to switch off in 10 seconds</div>
+  </div>
+
+  <div class="bt-prompt" id="bt-prompt">
+    <div class="title-sm" id="bt-title">Pair with</div>
+    <div class="device" id="bt-device"></div>
+    <div class="passkey" id="bt-passkey"></div>
+    <div class="hint" id="bt-hint">Make sure this code matches your phone</div>
+    <div class="row">
+      <button class="reject" onclick="btRespond('reject')">Reject</button>
+      <button class="accept" onclick="btRespond('accept')">Accept</button>
+    </div>
   </div>
 
   <div class="top-row">
@@ -138,6 +179,7 @@
       <p class="artist" id="artist"></p>
       <p class="album"  id="album"></p>
     </div>
+    <button class="pair-btn" id="pair-btn" onclick="togglePairing()">Pair new device</button>
     <div class="controls">
       <button class="ctl-btn" onclick="media('previous')">⏮</button>
       <button class="ctl-btn playpause" id="playpause" onclick="playpause()">▶</button>
@@ -155,6 +197,7 @@ let lastState = null;
 let tempMode  = 'outside';
 let shutdownArmed   = false;
 let shutdownTimeout = null;
+let pairingUntil    = null;
 
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
@@ -246,6 +289,50 @@ function render(state) {
   }
 
   renderTemp();
+  renderBluetooth(state);
+}
+
+function renderBluetooth(state) {
+  const bt = state.bluetooth || {};
+  const p = bt.prompt;
+  const el = document.getElementById('bt-prompt');
+  if (p) {
+    document.getElementById('bt-title').textContent =
+      p.kind === 'confirm' ? 'Pair with' : 'Allow connection from';
+    document.getElementById('bt-device').textContent = p.device;
+    document.getElementById('bt-passkey').textContent = p.passkey || '';
+    document.getElementById('bt-hint').textContent = p.passkey
+      ? 'Make sure this code matches your phone' : '';
+    el.classList.add('show');
+  } else {
+    el.classList.remove('show');
+  }
+  pairingUntil = bt.pairing_until || null;
+  updatePairUI();
+}
+
+function updatePairUI() {
+  const btn = document.getElementById('pair-btn');
+  const connected = lastState && lastState.media && lastState.media.connected;
+  if (connected) { btn.style.display = 'none'; return; }
+  btn.style.display = 'block';
+  if (pairingUntil) {
+    const left = Math.max(0, Math.round(pairingUntil - Date.now() / 1000));
+    btn.textContent = `Pairing… ${left}s (tap to cancel)`;
+    btn.classList.add('active');
+  } else {
+    btn.textContent = 'Pair new device';
+    btn.classList.remove('active');
+  }
+}
+
+async function togglePairing() {
+  await fetch(pairingUntil ? '/bluetooth/pairing/stop' : '/bluetooth/pairing/start',
+              { method: 'POST' });
+}
+
+async function btRespond(decision) {
+  await fetch(`/bluetooth/respond/${decision}`, { method: 'POST' });
 }
 
 async function playpause()  { await fetch('/media/playpause', { method: 'POST' }); }
@@ -253,6 +340,7 @@ async function media(action){ await fetch(`/media/${action}`, { method: 'POST' }
 async function vol(dir)     { await fetch(`/media/volume/${dir}`, { method: 'POST' }); }
 
 setInterval(updateClock, 1000);
+setInterval(updatePairUI, 1000);
 updateClock();
 connect();
 </script>

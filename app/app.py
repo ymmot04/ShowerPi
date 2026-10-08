@@ -21,6 +21,7 @@ import math
 import time
 import httpx
 import smbus2
+from pairing import PairingManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("controller")
@@ -81,6 +82,9 @@ async def broadcast():
             dead.append(ws)
     for ws in dead:
         clients.discard(ws)
+
+
+pairing = PairingManager(state, broadcast)
 
 
 # ---------- shower temperature ----------
@@ -323,6 +327,10 @@ async def detach_player():
 
 async def watch_bluez():
     bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+    try:
+        await pairing.start(bus)
+    except Exception as e:
+        log.warning("Pairing agent registration failed: %s", e)
 
     introspection = await bus.introspect("org.bluez", "/")
     root = bus.get_proxy_object("org.bluez", "/", introspection)
@@ -445,6 +453,29 @@ async def media_volume(direction: str):
         log.warning("Set volume failed (clearing cache): %s", e)
         bt["transport_props"] = None
         return {"ok": False, "error": f"set failed: {e}"}
+
+
+@app.post("/bluetooth/pairing/start")
+async def bluetooth_pairing_start():
+    try:
+        await pairing.open_window()
+        return {"ok": True}
+    except Exception as e:
+        log.warning("Could not open pairing window: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/bluetooth/pairing/stop")
+async def bluetooth_pairing_stop():
+    await pairing.close_window()
+    return {"ok": True}
+
+
+@app.post("/bluetooth/respond/{decision}")
+async def bluetooth_respond(decision: str):
+    if decision not in ("accept", "reject"):
+        return {"ok": False, "error": "decision must be accept or reject"}
+    return {"ok": pairing.respond(decision == "accept")}
 
 
 # ---------- WebSocket ----------

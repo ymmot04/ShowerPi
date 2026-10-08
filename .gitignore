@@ -3,5 +3,7 @@ __pycache__/
 .venv/
 venv/
 *.swp
+*.log
+.env
 .DS_Store
 .claude/settings.local.json
